@@ -1,0 +1,293 @@
+---
+title: "Manchester United Summary"
+description: |
+   2023-2024 Premier League
+format: html
+---
+
+## Introduction
+
+```{r}
+
+library(tidyverse)
+library(worldfootballR)
+library(showtext)
+library(scales)
+library(gghighlight)
+library(ggrepel)
+library(waffle)
+library(glue)
+
+font_add_google("Roboto", "body_font")
+showtext_auto()
+
+body_font <- "body_font"
+```
+
+```{r, cache=TRUE}
+
+## 2023-2024 season
+
+## To get possession stats
+possession_24 <- fb_season_team_stats(country = "ENG", gender = "M",
+                                      season_end_year = "2024", tier = "1st",
+                                      stat_type = "possession")
+
+
+## To get EPL table
+table_24 <- fb_season_team_stats(country = "ENG", gender = "M",
+                                      season_end_year = "2024", tier = "1st",
+                                      stat_type = "league_table")
+
+## To get playing time
+player_logs <- fb_team_player_stats(team_urls = "https://fbref.com/en/squads/19538871/Manchester-United-Stats", 
+                                       stat_type= "standard")
+
+## To get goal for & against stats
+manutd_logs <- fb_team_goal_logs(team_urls = "https://fbref.com/en/squads/19538871/Manchester-United-Stats", for_or_against = "both")
+
+
+
+```
+
+```{r}
+
+theme_set(theme_minimal(base_family = body_font,
+                        base_size = 37) +
+            theme(plot.title = element_text(face = "bold", colour = "#590d22", size = 55,
+                                             margin = margin(5, 0, 5, 0)),
+                  plot.subtitle = element_text(size = 40, colour = "#aaaaaa", 
+                                               margin = margin(0, 0, 20, 0)),
+                  plot.caption = element_text(colour = "#aaaaaa", margin = margin(10, 0, 10, 0),
+                                              size = 22),
+                  plot.margin = margin(t = 30, r = 30, b = 30, l = 30),
+                  panel.background = element_rect(fill = "#f5f3f4", color = NA),
+                  plot.background = element_rect(fill = "#f5f3f4", color = NA)
+                  ))
+
+```
+
+
+```{r}
+
+team_table_24 <- table_24 |> 
+  filter(Squad == "Manchester Utd") |> 
+  select(c(Squad, Team_or_Opponent, W, D, L)) |> 
+  pivot_longer(cols = c(W, D, L),
+               names_to = "Result")  |> 
+  mutate(Percentage = value / sum(value))
+  
+
+team_table_24 |>
+  ggplot(aes(x = Result, y = value)) +
+  geom_col(fill = "#590d22") +
+  coord_flip(expand = FALSE, clip = "off") +
+  geom_text(aes(label = percent(Percentage)), 
+            size = 9, colour = "white", position = position_fill(vjust = 1),
+            family = body_font) +
+  labs(title = "2023-2024 English Premier League",
+       subtitle = "Manchester United Win Percentage",
+       caption = "SOURCE: FBREF | VIZ: ZAHIER NASRUDIN") +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank())
+        
+
+ggsave("win_percentage.jpeg",
+       width = 8, height = 5, dpi = 320)  
+ 
+```
+
+```{r}
+
+
+team_possession_24 <- possession_24 |> 
+  filter(Team_or_Opponent == "team") %>%
+  mutate(Poss = Poss / 100)
+
+
+team_possession_24 |>
+  mutate(Squad = fct_reorder(Squad, Poss)) |> 
+  ggplot(aes(x = Squad, y = Poss)) +
+  geom_segment(aes(y = 0, 
+                   yend = Poss,
+                   xend = Squad), 
+               color = "black") +
+  geom_point(size = 3, colour = "#590d22") +
+  geom_text(aes(label = percent(Poss, accuracy = 1)),color="#590d22", size= 10, nudge_y = 0.03,
+            family = body_font, data = filter(team_possession_24, Squad == "Manchester Utd")) +
+  gghighlight(Squad == "Manchester Utd", use_direct_label = FALSE) +
+  scale_y_continuous(limits = c(0, 0.7), labels = percent) +
+  coord_flip(expand = F, clip = "off") +
+  labs(title = "2023-2024 English Premier League",
+       subtitle = "Average Possession",
+       caption = "SOURCE: FBREF | VIZ: ZAHIER NASRUDIN") +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(linetype = "dashed", linewidth = 0.8),
+        axis.title = element_blank())
+
+
+ggsave("team_possession.jpeg",
+       width = 8, height = 6, dpi = 320)  
+
+```
+
+```{r}
+
+
+goal_score_24 <- table_24 |> 
+  select(c(Squad, Team_or_Opponent, GF, xG)) |> 
+  mutate(Goal_per90 = GF / 38,
+         xG_per90 = xG / 38)
+
+
+goal_score_24 |>
+  ggplot(aes(x = xG_per90, y = Goal_per90)) +
+   geom_point(size = 2,
+               data = filter(goal_score_24, Squad != "Manchester Utd")) +
+  geom_point(colour = "#590d22", size = 2,
+             data = filter(goal_score_24, Squad == "Manchester Utd"), ) +
+  scale_x_continuous(breaks = seq(from = 0, to = 3, by = 0.5),
+                     limits = c(0,3)) +
+  scale_y_continuous(breaks = seq(from = 0, to = 3, by = 0.5),
+                     limits = c(0,3)) +
+  geom_text_repel(aes(label = Squad), max.overlaps = 100,
+                  size= 10, family = body_font, min.segment.length = 0) +
+  geom_abline(linewidth = 0.1, linetype = "dashed") +
+  labs(x = "Expected Goals",
+       y = "Goals Scored",
+       title = "2023-2024 English Premier League: xG vs Goals Scored",
+       subtitle =  "Per 90 minutes") +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = 0.8))
+
+ggsave("team_xg_goal.jpeg",
+       width = 8, height = 5, dpi = 320)  
+
+```
+
+```{r}
+
+
+player_logs |>
+  ggplot(aes(x = xG_Expected, y = Gls)) +
+  geom_point(colour = "#590d22", size = 2) +
+  geom_text_repel(aes(label = Player), size= 10, 
+                  family = body_font, min.segment.length = 0,
+                  data = player_logs |> slice_max(Gls, n = 5)) +
+  geom_abline(linewidth = 0.1, linetype = "dashed") +
+  labs(x = "Expected Goals",
+       y = "Goals Scored",
+       title = "2023-2024 English Premier League: xG vs Goals Scored",
+       subtitle =  "Manchester United Players") +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(linewidth = 0.8))
+
+ggsave("player_xg_goal.jpeg",
+       width = 8, height = 5, dpi = 320)  
+
+```
+
+
+
+
+
+```{r}
+
+
+goal_for_24 <- manutd_logs |> 
+  filter(Comp == "Premier League",
+         For_or_Against == "for") |> 
+  reframe(goal_for= n(), .by = Venue)
+
+
+
+goal_for_24 |> 
+  ggplot(aes(x = Venue, y = goal_for)) +
+  geom_col(fill = "#590d22") +
+  coord_flip(expand = FALSE, clip = "off") +
+  geom_text(aes(label = goal_for), 
+            size = 10, colour = "white", position = position_fill(vjust = 1),
+            family = body_font) +
+  labs(title = "2023-2024 English Premier League",
+       subtitle = "Manchester United: Total Goals Scored",
+       caption = "SOURCE: FBREF | VIZ: ZAHIER NASRUDIN") +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank())
+
+
+ggsave("goal_for.jpeg",
+       width = 8, height = 5, dpi = 320)  
+
+```
+
+
+
+```{r}
+
+
+goal_against_24 <- manutd_logs |> 
+  filter(Comp == "Premier League",
+         For_or_Against == "against") |> 
+  reframe(goal_against = n(), .by = Venue)
+
+
+
+goal_against_24 |> 
+  ggplot(aes(x = Venue, y = goal_against)) +
+  geom_col(fill = "#590d22") +
+  coord_flip(expand = FALSE, clip = "off") +
+  geom_text(aes(label = goal_against), 
+            size = 10, colour = "white", position = position_fill(vjust = 1),
+            family = body_font) +
+  labs(title = "2023-2024 English Premier League",
+       subtitle = "Manchester United: Total Goals Against",
+       caption = "SOURCE: FBREF | VIZ: ZAHIER NASRUDIN") +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank())
+
+
+ggsave("goal_against.jpeg",
+       width = 8, height = 5, dpi = 320)  
+
+```
+
+```{r}
+
+playing_time <- player_logs |> 
+  select(Player, Min_Playing_Time) |> 
+  mutate(Min_percent_Playing_Time = round((Min_Playing_Time / 3420) * 100),
+         Min_percent_Playing_Time = round(Min_percent_Playing_Time),
+         Min_percent_Not_Playing_Time = 100 - Min_percent_Playing_Time) |> 
+  arrange(desc(Min_percent_Playing_Time)) |> 
+  head(15) |> 
+  mutate(Label = glue("{Player} {Min_percent_Playing_Time}%"))
+
+desired_level_player <- playing_time |> 
+  arrange(desc(Min_percent_Playing_Time)) |> 
+  pull(Label)
+
+
+playing_time |> 
+  pivot_longer(cols = -c(Player, Label, Min_Playing_Time)) |> 
+  mutate(Label = factor(Label, levels = desired_level_player)) |>
+  ggplot(aes(fill = name, values = value)) +
+  geom_waffle(color = "white", show.legend = F) +
+  scale_fill_manual(values = c("grey", "#590d22")) +
+  facet_wrap(~ Label, nrow = 3) +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank(),
+        panel.spacing=unit(1.5,"mm"),
+        strip.text = element_text(margin = margin(b = 1))) +
+  labs(title = "2023-2024 English Premier League",
+       subtitle = "Manchester United: Percentage of total minutes played (Top 15)",
+       caption = "SOURCE: FBREF | VIZ: ZAHIER NASRUDIN")
+
+
+ggsave("playing_time.jpeg",
+       width = 9, height = 6, dpi = 320)  
+
+```
